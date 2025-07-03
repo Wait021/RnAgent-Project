@@ -35,7 +35,7 @@ rna-agent-project/
 1. **克隆项目**
 
 ```bash
-git clone https://github.com/Wait021/RnAgent-Project.git
+git clone https://github.com/<your-github-username>/RnAgent-Project.git
 cd RnAgent-Project
 ```
 
@@ -72,7 +72,7 @@ export DEEPSEEK_API_KEY="your_deepseek_key"
 4. **启动服务**
 
 ```bash
-# 标准版本（3端分离）
+# 标准版本（3端分离，支持解耦合工具发现）
 cd Rna/
 python run_rna_demo.py
 
@@ -81,11 +81,75 @@ cd Rna/optimized_core/
 python run_optimized_demo.py
 ```
 
+> 🆕 **解耦合架构**: Agent现在支持自动工具发现，会从MCP服务器动态获取工具列表，无需硬编码工具名称！
+
 5. **访问系统**
 
 - 前端界面：[http://localhost:8501](http://localhost:8501)
 - Agent核心：[http://localhost:8002](http://localhost:8002)
 - MCP后端：[http://localhost:8000](http://localhost:8000)
+
+## 🔧 解耦合架构特性
+
+### 自动工具发现
+
+系统现在支持真正的解耦合架构，Agent能够从MCP服务器自动发现和加载工具：
+
+```python
+# 自动从MCP服务器发现工具（类似OpenAI Agents SDK）
+from rna_agent_graph import create_agent
+
+# 创建支持工具发现的Agent
+agent = create_agent(enable_discovery=True, mcp_server_url="http://localhost:8000")
+
+# Agent会自动获取工具列表，无需硬编码
+tools_info = agent.get_tools_info()
+print(f"发现了 {len(tools_info)} 个工具")
+```
+
+### 工具发现API
+
+MCP服务器提供RESTful API用于工具发现：
+
+```bash
+# 获取所有工具列表
+curl http://localhost:8000/api/tools
+
+# 获取特定工具信息
+curl http://localhost:8000/api/tools/load_pbmc3k_data
+
+# 调用工具
+curl -X POST http://localhost:8000/api/tools/health_check/call \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
+
+### 测试解耦合功能
+
+运行集成测试验证解耦合功能：
+
+```bash
+# 在项目根目录运行
+python test_integration.py
+```
+
+这将测试：
+
+- MCP服务器工具发现API
+- Agent动态工具加载
+- 回退模式（硬编码工具）
+
+### 回退机制
+
+如果MCP服务器不可用，系统会自动回退到硬编码工具：
+
+```python
+# 禁用工具发现（使用硬编码工具）
+agent = create_agent(enable_discovery=False)
+
+# 或者在MCP服务器不可用时自动回退
+# Agent会检测连接失败并使用硬编码工具
+```
 
 ## 🌐 服务器部署
 
@@ -95,11 +159,11 @@ python run_optimized_demo.py
 
 ```bash
 # 下载部署脚本
-wget https://raw.githubusercontent.com/Wait021/RnAgent-Project/main/deploy.sh
+wget https://raw.githubusercontent.com/<your-github-username>/RnAgent-Project/main/deploy.sh
 chmod +x deploy.sh
 
 # 编辑脚本，设置Git仓库地址（已预配置）
-# 仓库地址: https://github.com/Wait021/RnAgent-Project.git
+# 仓库地址: https://github.com/<your-github-username>/RnAgent-Project.git
 
 # 运行部署
 ./deploy.sh
@@ -141,7 +205,7 @@ cd /workspace/rna_project
 2. **克隆代码**
 
 ```bash
-git clone https://github.com/Wait021/RnAgent-Project.git .
+git clone https://github.com/<your-github-username>/RnAgent-Project.git .
 ```
 
 3. **安装依赖**
@@ -440,7 +504,7 @@ print('API密钥有效')
 如有问题，请：
 
 1. 查看[故障排除](#-故障排除)部分
-2. 检查[Issues](https://github.com/Wait021/RnAgent-Project/issues)
+2. 检查[Issues](https://github.com/<your-github-username>/RnAgent-Project/issues)
 3. 创建新的Issue
 
 ---

@@ -12,6 +12,9 @@ langchain-core==0.2.38
 langchain-openai==0.1.25
 langgraph==0.2.28
 
+# LangChain MCP适配器
+langchain-mcp-adapters>=0.1.0
+
 # FastMCP服务器框架
 fastmcp>=0.1.0
 

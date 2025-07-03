@@ -22,9 +22,8 @@ from langgraph.prebuilt import ToolNode
 from langgraph.types import Command
 from pydantic import SecretStr
 
-# MCP客户端导入
-from mcp.client.session import ClientSession
-from mcp.client.sse import sse_client
+# MCP Adapters 导入
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 # 设置详细的日志格式
 logging.basicConfig(
@@ -51,8 +50,38 @@ class RNAAnalysisAgent:
 
     def __init__(self):
         logger.info("🧬 [Agent初始化] 开始初始化RNA分析智能体")
-        self.graph = self._create_graph()
+        self.mcp_client = None
+        self.tools = None
+        self.graph = None
+        # 异步初始化
+        asyncio.run(self._async_init())
         logger.info("✅ [Agent初始化] RNA分析智能体初始化完成")
+
+    async def _async_init(self):
+        """异步初始化MCP客户端和工具"""
+        logger.info("🔌 [MCP初始化] 开始初始化MCP客户端")
+        
+        # 创建MCP客户端
+        self.mcp_client = MultiServerMCPClient({
+            "rna_analysis": {
+                "url": MCP_SERVER_URL,
+                "transport": "sse",
+            }
+        })
+        
+        # 获取工具列表
+        logger.info("🛠️ [工具获取] 从MCP服务器动态获取工具列表")
+        tools = await self.mcp_client.get_tools()
+        
+        # 设置 return_direct=True 避免 LangGraph 无限循环
+        for tool in tools:
+            tool.return_direct = True
+            
+        self.tools = tools
+        logger.info(f"✅ [工具加载] 成功加载 {len(self.tools)} 个工具: {[tool.name for tool in self.tools]}")
+        
+        # 创建图
+        self.graph = self._create_graph()
 
     def _create_graph(self):
         """创建LangGraph工作流"""
@@ -63,7 +92,7 @@ class RNAAnalysisAgent:
 
         # 添加节点
         workflow.add_node("llm", self._call_model)
-        workflow.add_node("tools", ToolNode(self._get_tools()))
+        workflow.add_node("tools", ToolNode(self.tools))
 
         # 设置边
         workflow.add_edge(START, "llm")
@@ -76,22 +105,6 @@ class RNAAnalysisAgent:
 
         logger.info("✅ [图构建] LangGraph工作流创建完成")
         return workflow.compile()
-
-    def _get_tools(self):
-        """获取可用工具列表"""
-        tools = [
-            load_pbmc3k_data_tool,
-            quality_control_analysis_tool,
-            preprocessing_analysis_tool,
-            dimensionality_reduction_analysis_tool,
-            clustering_analysis_tool,
-            marker_genes_analysis_tool,
-            generate_analysis_report_tool,
-            python_repl_tool
-        ]
-        logger.info(
-            f"🛠️ [工具列表] 加载了 {len(tools)} 个工具: {[tool.name for tool in tools]}")
-        return tools
 
     def _call_model(self, state: AgentState):
         """调用语言模型"""
@@ -121,7 +134,7 @@ class RNAAnalysisAgent:
             llm = self._get_llm_client()
 
             # 绑定工具
-            llm_with_tools = llm.bind_tools(self._get_tools())
+            llm_with_tools = llm.bind_tools(self.tools)
 
             logger.info("🚀 [LLM调用] 发送请求到语言模型...")
 
@@ -186,8 +199,8 @@ class RNAAnalysisAgent:
             raise ValueError(
                 "No API key found. Please set DEEPSEEK_API_KEY or OPENAI_API_KEY.")
 
-    def process_message(self, message: str, history: List[BaseMessage] = None) -> Dict[str, Any]:
-        """处理用户消息，支持历史消息"""
+    async def process_message_async(self, message: str, history: List[BaseMessage] = None) -> Dict[str, Any]:
+        """异步处理用户消息，支持历史消息"""
         start_time = time.time()
 
         try:
@@ -213,8 +226,8 @@ class RNAAnalysisAgent:
             logger.info("🚀 [图执行] 开始执行LangGraph工作流")
             logger.info(f"📊 [初始状态] 总消息数: {len(messages)}")
 
-            # 运行图
-            result = self.graph.invoke(initial_state)
+            # 运行图 - 使用异步调用
+            result = await self.graph.ainvoke(initial_state)
 
             process_time = time.time() - start_time
 
@@ -257,238 +270,9 @@ class RNAAnalysisAgent:
                 "process_time": process_time
             }
 
-# MCP工具调用函数
-
-
-async def call_mcp_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """异步调用MCP工具"""
-    start_time = time.time()
-
-    try:
-        logger.info(f"🔌 [MCP连接] 连接到MCP服务器: {MCP_SERVER_URL}")
-        logger.info(f"🛠️ [工具调用] 调用工具: {tool_name}")
-        logger.info(f"📋 [调用参数] {arguments}")
-
-        async with sse_client(MCP_SERVER_URL) as (read, write):
-            async with ClientSession(read, write) as session:
-                await session.initialize()
-                result = await session.call_tool(tool_name, arguments)
-
-                call_time = time.time() - start_time
-
-                # 解析结果 - 修复MCP内容解析兼容性
-                if hasattr(result, 'content') and result.content:
-                    # 处理不同类型的内容
-                    content_item = result.content[0]
-                    try:
-                        # 安全地获取文本内容
-                        if hasattr(content_item, 'text'):
-                            text_content = getattr(content_item, 'text', '')
-                        elif hasattr(content_item, 'content'):
-                            text_content = getattr(content_item, 'content', '')
-                        else:
-                            # 如果没有预期属性，尝试直接转换为字符串
-                            text_content = str(content_item)
-                    except Exception as content_error:
-                        logger.warning(f"⚠️ [内容提取] 内容提取失败: {content_error}")
-                        text_content = str(content_item)
-
-                    try:
-                        parsed = json.loads(text_content)
-                        logger.info(
-                            f"✅ [工具响应] {tool_name} 调用成功，耗时: {call_time:.2f}s")
-                        logger.info(f"📋 [响应内容] {str(parsed)[:200]}...")
-                        return parsed
-                    except json.JSONDecodeError:
-                        logger.info(
-                            f"✅ [工具响应] {tool_name} 调用成功，耗时: {call_time:.2f}s (文本响应)")
-                        return {"content": text_content}
-                else:
-                    logger.warning(f"⚠️ [工具响应] {tool_name} 返回空内容")
-                    return {"error": "No content in result"}
-
-    except Exception as e:
-        call_time = time.time() - start_time
-        logger.error(f"❌ [MCP错误] {tool_name} 调用失败，耗时: {call_time:.2f}s")
-        logger.error(f"🔥 [错误详情] {str(e)}")
-        return {"error": str(e)}
-
-
-def call_mcp_tool_sync(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-    """同步调用MCP工具"""
-    return asyncio.run(call_mcp_tool(tool_name, arguments))
-
-# 定义工具 - 这些工具会被LangGraph自动调用
-
-
-@tool
-def load_pbmc3k_data_tool() -> str:
-    """加载PBMC3K数据集的工具"""
-    logger.info("🧬 [工具执行] 开始执行加载PBMC3K数据工具")
-    result = call_mcp_tool_sync("load_pbmc3k_data", {})
-
-    if "content" in result:
-        # 检查是否有图片生成
-        if "artifact" in result and result["artifact"]:
-            logger.info(f"🖼️ [图片生成] 生成了 {len(result['artifact'])} 个图片文件")
-            # 在返回的内容中添加图片信息标记
-            content = result["content"] + \
-                f"\n[ARTIFACTS]{json.dumps(result['artifact'])}[/ARTIFACTS]"
-            return content
-        return result["content"]
-    else:
-        error_msg = f"加载数据工具调用失败: {result.get('error', 'Unknown error')}"
-        logger.error(f"❌ [工具错误] {error_msg}")
-        return error_msg
-
-
-@tool
-def quality_control_analysis_tool() -> str:
-    """质量控制分析工具"""
-    logger.info("📊 [工具执行] 开始执行质量控制分析工具")
-    result = call_mcp_tool_sync("quality_control_analysis", {})
-
-    if "content" in result:
-        # 检查是否有图片生成
-        if "artifact" in result and result["artifact"]:
-            logger.info(f"🖼️ [图片生成] 生成了 {len(result['artifact'])} 个图片文件")
-            # 在返回的内容中添加图片信息标记
-            content = result["content"] + \
-                f"\n[ARTIFACTS]{json.dumps(result['artifact'])}[/ARTIFACTS]"
-            return content
-        return result["content"]
-    else:
-        error_msg = f"质量控制分析工具调用失败: {result.get('error', 'Unknown error')}"
-        logger.error(f"❌ [工具错误] {error_msg}")
-        return error_msg
-
-
-@tool
-def preprocessing_analysis_tool() -> str:
-    """数据预处理分析工具"""
-    logger.info("🔄 [工具执行] 开始执行数据预处理分析工具")
-    result = call_mcp_tool_sync("preprocessing_analysis", {})
-
-    if "content" in result:
-        # 检查是否有图片生成
-        if "artifact" in result and result["artifact"]:
-            logger.info(f"🖼️ [图片生成] 生成了 {len(result['artifact'])} 个图片文件")
-            # 在返回的内容中添加图片信息标记
-            content = result["content"] + \
-                f"\n[ARTIFACTS]{json.dumps(result['artifact'])}[/ARTIFACTS]"
-            return content
-        return result["content"]
-    else:
-        error_msg = f"数据预处理分析工具调用失败: {result.get('error', 'Unknown error')}"
-        logger.error(f"❌ [工具错误] {error_msg}")
-        return error_msg
-
-
-@tool
-def dimensionality_reduction_analysis_tool() -> str:
-    """降维分析工具"""
-    logger.info("📉 [工具执行] 开始执行降维分析工具")
-    result = call_mcp_tool_sync("dimensionality_reduction_analysis", {})
-
-    if "content" in result:
-        # 检查是否有图片生成
-        if "artifact" in result and result["artifact"]:
-            logger.info(f"🖼️ [图片生成] 生成了 {len(result['artifact'])} 个图片文件")
-            # 在返回的内容中添加图片信息标记
-            content = result["content"] + \
-                f"\n[ARTIFACTS]{json.dumps(result['artifact'])}[/ARTIFACTS]"
-            return content
-        return result["content"]
-    else:
-        error_msg = f"降维分析工具调用失败: {result.get('error', 'Unknown error')}"
-        logger.error(f"❌ [工具错误] {error_msg}")
-        return error_msg
-
-
-@tool
-def clustering_analysis_tool() -> str:
-    """聚类分析工具"""
-    logger.info("🎯 [工具执行] 开始执行聚类分析工具")
-    result = call_mcp_tool_sync("clustering_analysis", {})
-
-    if "content" in result:
-        # 检查是否有图片生成
-        if "artifact" in result and result["artifact"]:
-            logger.info(f"🖼️ [图片生成] 生成了 {len(result['artifact'])} 个图片文件")
-            # 在返回的内容中添加图片信息标记
-            content = result["content"] + \
-                f"\n[ARTIFACTS]{json.dumps(result['artifact'])}[/ARTIFACTS]"
-            return content
-        return result["content"]
-    else:
-        error_msg = f"聚类分析工具调用失败: {result.get('error', 'Unknown error')}"
-        logger.error(f"❌ [工具错误] {error_msg}")
-        return error_msg
-
-
-@tool
-def marker_genes_analysis_tool() -> str:
-    """标记基因分析工具"""
-    logger.info("🧬 [工具执行] 开始执行标记基因分析工具")
-    result = call_mcp_tool_sync("marker_genes_analysis", {})
-
-    if "content" in result:
-        # 检查是否有图片生成
-        if "artifact" in result and result["artifact"]:
-            logger.info(f"🖼️ [图片生成] 生成了 {len(result['artifact'])} 个图片文件")
-            # 在返回的内容中添加图片信息标记
-            content = result["content"] + \
-                f"\n[ARTIFACTS]{json.dumps(result['artifact'])}[/ARTIFACTS]"
-            return content
-        return result["content"]
-    else:
-        error_msg = f"标记基因分析工具调用失败: {result.get('error', 'Unknown error')}"
-        logger.error(f"❌ [工具错误] {error_msg}")
-        return error_msg
-
-
-@tool
-def generate_analysis_report_tool() -> str:
-    """生成分析报告工具"""
-    logger.info("📋 [工具执行] 开始执行生成分析报告工具")
-    result = call_mcp_tool_sync("generate_analysis_report", {})
-
-    if "content" in result:
-        # 检查是否有图片生成
-        if "artifact" in result and result["artifact"]:
-            logger.info(f"🖼️ [图片生成] 生成了 {len(result['artifact'])} 个图片文件")
-            # 在返回的内容中添加图片信息标记
-            content = result["content"] + \
-                f"\n[ARTIFACTS]{json.dumps(result['artifact'])}[/ARTIFACTS]"
-            return content
-        return result["content"]
-    else:
-        error_msg = f"生成分析报告工具调用失败: {result.get('error', 'Unknown error')}"
-        logger.error(f"❌ [工具错误] {error_msg}")
-        return error_msg
-
-
-@tool
-def python_repl_tool(query: str) -> str:
-    """Python代码执行工具"""
-    logger.info("🐍 [工具执行] 开始执行Python代码工具")
-    logger.info(f"💻 [代码输入] {query[:100]}...")
-
-    result = call_mcp_tool_sync("python_repl_tool", {"query": query})
-
-    if "content" in result:
-        # 检查是否有图片生成
-        if "artifact" in result and result["artifact"]:
-            logger.info(f"🖼️ [图片生成] 生成了 {len(result['artifact'])} 个图片文件")
-            # 在返回的内容中添加图片信息标记
-            content = result["content"] + \
-                f"\n[ARTIFACTS]{json.dumps(result['artifact'])}[/ARTIFACTS]"
-            return content
-        return result["content"]
-    else:
-        error_msg = f"Python代码执行工具调用失败: {result.get('error', 'Unknown error')}"
-        logger.error(f"❌ [工具错误] {error_msg}")
-        return error_msg
+    def process_message(self, message: str, history: List[BaseMessage] = None) -> Dict[str, Any]:
+        """同步包装的消息处理函数"""
+        return asyncio.run(self.process_message_async(message, history))
 
 
 # 创建全局智能体实例
