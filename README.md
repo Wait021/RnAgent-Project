@@ -35,8 +35,8 @@ rna-agent-project/
 1. **克隆项目**
 
 ```bash
-git clone https://github.com/your-username/rna-agent-project.git
-cd rna-agent-project
+git clone https://github.com/Wait021/RnAgent-Project.git
+cd RnAgent-Project
 ```
 
 2. **安装依赖**
@@ -47,8 +47,15 @@ python3 -m venv venv
 source venv/bin/activate  # Linux/Mac
 # 或 venv\Scripts\activate  # Windows
 
-# 安装依赖
+# 根据需求选择安装方式：
+# 完整安装（推荐）
 pip install -r requirements.txt
+
+# 或最小安装（仅核心功能）
+pip install -r requirements-minimal.txt
+
+# 或开发环境安装（包含开发工具）
+pip install -r requirements-dev.txt
 ```
 
 3. **配置环境变量**
@@ -88,12 +95,11 @@ python run_optimized_demo.py
 
 ```bash
 # 下载部署脚本
-wget https://raw.githubusercontent.com/your-username/rna-agent-project/main/deploy.sh
+wget https://raw.githubusercontent.com/Wait021/RnAgent-Project/main/deploy.sh
 chmod +x deploy.sh
 
-# 编辑脚本，设置Git仓库地址
-nano deploy.sh
-# 修改 REPO_URL="https://github.com/your-username/rna-agent-project.git"
+# 编辑脚本，设置Git仓库地址（已预配置）
+# 仓库地址: https://github.com/Wait021/RnAgent-Project.git
 
 # 运行部署
 ./deploy.sh
@@ -135,7 +141,7 @@ cd /workspace/rna_project
 2. **克隆代码**
 
 ```bash
-git clone https://github.com/Wait021/rna-agent-project.git .
+git clone https://github.com/Wait021/RnAgent-Project.git .
 ```
 
 3. **安装依赖**
@@ -434,7 +440,7 @@ print('API密钥有效')
 如有问题，请：
 
 1. 查看[故障排除](#-故障排除)部分
-2. 检查[Issues](https://github.com/your-username/rna-agent-project/issues)
+2. 检查[Issues](https://github.com/Wait021/RnAgent-Project/issues)
 3. 创建新的Issue
 
 ---

@@ -32,7 +32,7 @@ log_error() {
 # 配置变量
 PROJECT_NAME="rna_project"
 PROJECT_DIR="/home/$USER/$PROJECT_NAME"
-REPO_URL=""  # 用户需要设置自己的Git仓库地址
+REPO_URL="https://github.com/Wait021/RnAgent-Project.git"  # RnAgent项目仓库地址
 SERVICE_NAME="rna_agent"
 
 # 获取环境参数
