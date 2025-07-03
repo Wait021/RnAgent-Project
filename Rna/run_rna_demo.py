@@ -71,7 +71,11 @@ def check_data_path():
     """检查数据路径"""
     print("\n📁 检查数据路径...")
     
-    data_path = "/Volumes/T7/哈尔滨工业大学-2025/课题组项目/Agent-项目/PBMC3kRNA-seq/filtered_gene_bc_matrices/hg19/"
+    # 使用相对路径，从当前文件位置向上一级到项目根目录
+    current_dir = Path(__file__).parent  # Rna目录
+    project_root = current_dir.parent    # RnAgent-Project目录
+    data_path = project_root / "PBMC3kRNA-seq" / "filtered_gene_bc_matrices" / "hg19"
+    data_path = str(data_path)
     
     if os.path.exists(data_path):
         files = ['matrix.mtx', 'barcodes.tsv', 'genes.tsv']
