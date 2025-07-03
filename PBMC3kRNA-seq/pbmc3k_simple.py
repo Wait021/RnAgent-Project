@@ -2,8 +2,8 @@ import scanpy as sc
 
 # 读取 10X 表达数据（你的路径）
 adata = sc.read_10x_mtx(
-    "filtered_gene_bc_matrices/hg19", 
-    var_names="gene_symbols",    
+    "filtered_gene_bc_matrices/hg19",
+    var_names="gene_symbols",
 )
 
 print(adata.shape)  # 通常是 ~2700 x 3000

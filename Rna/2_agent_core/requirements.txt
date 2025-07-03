@@ -1,10 +1,10 @@
 # RNA智能体核心依赖包
 
-# LangChain和LangGraph
-langchain>=0.1.0
-langchain-core>=0.1.0
-langchain-openai>=0.1.0
-langgraph>=0.1.0
+# LangChain和LangGraph - 固定兼容版本
+langchain==0.2.16
+langchain-core==0.2.38
+langchain-openai==0.1.25
+langgraph==0.2.28
 
 # MCP客户端
 mcp>=1.0.0
@@ -19,5 +19,9 @@ python-dotenv>=1.0.0
 # 异步处理
 asyncio-compat>=0.1.0
 
+# HTTP服务器
+uvicorn>=0.24.0
+fastapi>=0.104.0
+
 # Base64编码
-base64 
+# 注意: base64是Python内置模块，不需要单独安装 
