@@ -128,8 +128,8 @@ http://your_server_ip:8501
 1. **创建项目目录**
 
 ```bash
-mkdir -p /home/$USER/rna_project
-cd /home/$USER/rna_project
+mkdir -p /workspace/rna_project
+cd /workspace/rna_project
 ```
 
 2. **克隆代码**
