@@ -678,10 +678,10 @@ else:
     sc.tl.rank_genes_groups(adata, 'leiden', method='wilcoxon')
     
     # 显示标记基因结果
-    sc.pl.rank_genes_groups(adata, n_genes=5, sharey=False)
+    sc.pl.rank_genes_groups(adata, n_genes=5, sharey=False, show=False)
     
     # 创建标记基因热图
-    sc.pl.rank_genes_groups_heatmap(adata, n_genes=3, show_gene_labels=True)
+    sc.pl.rank_genes_groups_heatmap(adata, n_genes=3, show_gene_labels=True, show=False)
     
     # 提取前几个聚类的top基因
     if 'rank_genes_groups' in adata.uns:
@@ -707,7 +707,7 @@ available_markers = [gene for gene in known_markers if gene in adata.var_names]
 
 if available_markers:
     print(f"\\n可视化已知标记基因: {', '.join(available_markers)}")
-    sc.pl.umap(adata, color=available_markers, ncols=3)
+    sc.pl.umap(adata, color=available_markers, ncols=3, show=False)
 else:
     print("\\n未找到常见的免疫细胞标记基因")
 
@@ -827,7 +827,7 @@ if 'leiden' in adata.obs.columns and 'X_umap' in adata.obsm:
         axes[1, 2].set_title('Mitochondrial Gene % Distribution')
 
     plt.tight_layout()
-    plt.show()
+    # plt.show() # 注释掉，图片会通过 _run_code 函数自动保存
 else:
     print("\\n⚠️ 图表生成跳过：缺少聚类结果或UMAP坐标")
     print("建议先执行: clustering_analysis 或 dimensionality_reduction_analysis")
@@ -894,7 +894,7 @@ sc.pp.calculate_qc_metrics(adata, percent_top=None, log1p=False, inplace=True)
 # 可视化质控指标
 fig, axes = plt.subplots(1, 3, figsize=(15, 5))
 sc.pl.violin(adata, ['n_genes_by_counts', 'total_counts', 'pct_counts_mt'],
-             jitter=0.4, multi_panel=True, ax=axes)
+             jitter=0.4, multi_panel=True, ax=axes, show=False)
 plt.tight_layout()
 
 print("\\n🧹 步骤3: 数据预处理...")
@@ -918,7 +918,7 @@ sc.pp.highly_variable_genes(adata, min_mean=0.0125, max_mean=3, min_disp=0.5)
 print(f"高变基因数量: {sum(adata.var.highly_variable)}")
 
 # 可视化高变基因
-sc.pl.highly_variable_genes(adata)
+sc.pl.highly_variable_genes(adata, show=False)
 
 # 只保留高变基因
 adata = adata[:, adata.var.highly_variable]
@@ -929,7 +929,7 @@ sc.pp.scale(adata, max_value=10)
 print("\\n📊 步骤4: 降维分析...")
 # PCA
 sc.tl.pca(adata, svd_solver='arpack')
-sc.pl.pca_variance_ratio(adata, n_comps=50, log=True)
+sc.pl.pca_variance_ratio(adata, n_comps=50, log=True, show=False)
 
 # 计算邻居图
 sc.pp.neighbors(adata, n_neighbors=10, n_pcs=40)
@@ -950,12 +950,12 @@ for cluster, count in cluster_counts.items():
 
 # 可视化聚类结果
 sc.pl.umap(adata, color=['leiden', 'total_counts',
-           'n_genes_by_counts'], ncols=3)
+           'n_genes_by_counts'], ncols=3, show=False)
 
 print("\\n🧬 步骤6: 标记基因分析...")
 # 差异基因分析
 sc.tl.rank_genes_groups(adata, 'leiden', method='wilcoxon')
-sc.pl.rank_genes_groups(adata, n_genes=5, sharey=False)
+sc.pl.rank_genes_groups(adata, n_genes=5, sharey=False, show=False)
 
 # 提取top基因
 result = adata.uns['rank_genes_groups']
@@ -973,7 +973,7 @@ available_markers = [gene for gene in known_markers if gene in adata.var_names]
 
 if available_markers:
     print(f"可视化已知标记基因: {', '.join(available_markers)}")
-    sc.pl.umap(adata, color=available_markers, ncols=3)
+    sc.pl.umap(adata, color=available_markers, ncols=3, show=False)
 else:
     print("未找到常见的免疫细胞标记基因")
 

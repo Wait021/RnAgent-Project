@@ -108,6 +108,14 @@ class RNAAnalysisAgent:
                 msg, 'content') else str(msg)[:100]
             logger.info(f"   [{i+1}] {msg_type}: {msg_content}...")
 
+        # 检查消息数量，如果超过阈值则进行截断或摘要
+        if len(messages) > 100:  # 设置最大消息数量阈值
+            logger.info(f"📏 [消息截断] 消息数量 {len(messages)} 超过阈值，保留最近的50条")
+            # 保留最近的50条消息
+            messages = messages[-50:]
+            # 更新state
+            state["messages"] = messages
+
         try:
             # 获取LLM客户端
             llm = self._get_llm_client()
@@ -178,42 +186,65 @@ class RNAAnalysisAgent:
             raise ValueError(
                 "No API key found. Please set DEEPSEEK_API_KEY or OPENAI_API_KEY.")
 
-    def process_message(self, message: str) -> Dict[str, Any]:
-        """处理用户消息"""
+    def process_message(self, message: str, history: List[BaseMessage] = None) -> Dict[str, Any]:
+        """处理用户消息，支持历史消息"""
         start_time = time.time()
 
         try:
             logger.info("🎯 [消息处理] 开始处理用户消息")
             logger.info(f"📝 [输入消息] {message}")
+            
+            # 准备消息列表
+            messages = []
+            
+            # 添加历史消息
+            if history:
+                messages.extend(history)
+                logger.info(f"📚 [历史加载] 加载了 {len(history)} 条历史消息")
+            
+            # 添加新的用户消息
+            messages.append(HumanMessage(content=message))
 
             # 创建输入状态
             initial_state = {
-                "messages": [HumanMessage(content=message)]
+                "messages": messages
             }
 
             logger.info("🚀 [图执行] 开始执行LangGraph工作流")
+            logger.info(f"📊 [初始状态] 总消息数: {len(messages)}")
 
             # 运行图
             result = self.graph.invoke(initial_state)
 
             process_time = time.time() - start_time
 
-            logger.info(f"✅ [图执行] 工作流执行完成，耗时: {process_time:.2f}s")
-            logger.info(f"💬 [输出消息] 生成了 {len(result['messages'])} 条消息")
+            # 获取最终消息
+            final_messages = result.get("messages", [])
+            final_response = ""
 
-            # 记录最终响应
-            final_response = result["messages"][-1].content if result["messages"] else ""
+            # 查找最后一条AI消息作为最终响应
+            for msg in reversed(final_messages):
+                if isinstance(msg, AIMessage):
+                    final_response = msg.content
+                    break
+
+            if not final_response:
+                final_response = "抱歉，处理完成但没有生成响应。"
+
+            logger.info(f"✅ [处理完成] 消息处理成功，耗时: {process_time:.2f}s")
+            logger.info(f"📊 [最终状态] 总消息数: {len(final_messages)}")
             logger.info(f"📤 [最终响应] {final_response[:200]}...")
 
             return {
                 "success": True,
-                "messages": result["messages"],
-                "final_response": final_response
+                "final_response": final_response,
+                "messages": final_messages,
+                "process_time": process_time
             }
 
         except Exception as e:
             process_time = time.time() - start_time
-            logger.error(f"❌ [消息处理] 处理失败，耗时: {process_time:.2f}s")
+            logger.error(f"❌ [处理错误] 消息处理失败，耗时: {process_time:.2f}s")
             logger.error(f"🔥 [错误详情] {str(e)}")
 
             import traceback
@@ -221,8 +252,9 @@ class RNAAnalysisAgent:
 
             return {
                 "success": False,
-                "error": str(e),
-                "messages": []
+                "error": f"处理消息时发生错误: {str(e)}",
+                "messages": [],
+                "process_time": process_time
             }
 
 # MCP工具调用函数
@@ -469,6 +501,17 @@ def process_user_message(message: str) -> Dict[str, Any]:
     logger.info(f"📨 [入口函数] 收到用户消息: {message}")
     result = rna_agent.process_message(message)
     logger.info(f"📤 [入口函数] 返回处理结果: success={result['success']}")
+    return result
+
+def process_user_message_with_history(message: str, history: List[BaseMessage] = None) -> Dict[str, Any]:
+    """处理用户消息的主入口函数，支持历史记忆"""
+    logger.info(f"📨 [入口函数] 收到用户消息: {message}")
+    logger.info(f"📚 [入口函数] 历史消息数量: {len(history) if history else 0}")
+    
+    result = rna_agent.process_message(message, history)
+    logger.info(f"📤 [入口函数] 返回处理结果: success={result['success']}")
+    logger.info(f"💬 [入口函数] 最终消息数量: {len(result.get('messages', []))}")
+    
     return result
 
 

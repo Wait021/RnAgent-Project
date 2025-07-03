@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 RnAgent 前端应用 - 基于STAgent_MCP的优化版本
-直接调用MCP工具，简化架构
+直接调用MCP工具，简化架构，支持对话记忆
 """
 
 import streamlit as st
@@ -11,6 +11,7 @@ import asyncio
 import json
 import requests
 import logging
+from pathlib import Path
 from typing import List, Dict, Any
 from datetime import datetime
 from dotenv import load_dotenv
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 MCP_SERVER_URL = "http://localhost:8000/sse"
 # Agent Core HTTP API
 AGENT_CORE_CHAT_URL = "http://localhost:8002/chat"
+AGENT_CORE_CONVERSATIONS_URL = "http://localhost:8002/conversations"
 
 # 加载环境变量
 load_dotenv()
@@ -353,9 +355,13 @@ def display_message(message: BaseMessage, index: int):
             st.markdown('</div>', unsafe_allow_html=True)
 
 
-# 初始化会话状态
+# 初始化session state
+if "conversation_id" not in st.session_state:
+    st.session_state.conversation_id = None
 if "messages" not in st.session_state:
     st.session_state.messages = []
+if "conversation_history" not in st.session_state:
+    st.session_state.conversation_history = []
 
 
 def get_available_models():
@@ -383,10 +389,14 @@ def get_available_models():
 
 # 如果前面没有定义 call_agent_core_sync / check_agent_core_health，则补充定义
 if 'call_agent_core_sync' not in globals():
-    def call_agent_core_sync(message: str) -> Dict[str, Any]:
+    def call_agent_core_sync(message: str, conversation_id: str = None) -> Dict[str, Any]:
+        """调用Agent Core处理消息，支持对话记忆"""
         try:
-            resp = requests.post(AGENT_CORE_CHAT_URL, json={
-                                 "message": message}, timeout=120)
+            payload = {"message": message}
+            if conversation_id:
+                payload["conversation_id"] = conversation_id
+                
+            resp = requests.post(AGENT_CORE_CHAT_URL, json=payload, timeout=120)
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
@@ -400,6 +410,36 @@ if 'check_agent_core_health' not in globals():
             return resp.status_code == 200 and resp.json().get("status") == "healthy"
         except Exception:
             return False
+
+def get_conversations() -> List[Dict[str, Any]]:
+    """获取所有对话列表"""
+    try:
+        resp = requests.get(AGENT_CORE_CONVERSATIONS_URL, timeout=10)
+        resp.raise_for_status()
+        return resp.json().get("conversations", [])
+    except Exception as e:
+        logger.error(f"获取对话列表失败: {e}")
+        return []
+
+def delete_conversation(conversation_id: str) -> bool:
+    """删除对话"""
+    try:
+        resp = requests.delete(f"{AGENT_CORE_CONVERSATIONS_URL}/{conversation_id}", timeout=10)
+        resp.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error(f"删除对话失败: {e}")
+        return False
+
+def clear_conversation(conversation_id: str) -> bool:
+    """清空对话"""
+    try:
+        resp = requests.post(f"{AGENT_CORE_CONVERSATIONS_URL}/{conversation_id}/clear", timeout=10)
+        resp.raise_for_status()
+        return True
+    except Exception as e:
+        logger.error(f"清空对话失败: {e}")
+        return False
 
 # 侧边栏
 with st.sidebar:
@@ -618,16 +658,79 @@ with st.sidebar:
                 st.rerun()
 
     if st.button("🔄 清空对话", use_container_width=True):
+        # 如果有conversation_id，则清空远程对话
+        if st.session_state.conversation_id:
+            if clear_conversation(st.session_state.conversation_id):
+                st.success("✅ 对话已清空")
+            else:
+                st.error("❌ 清空对话失败")
+        
+        # 清空本地状态
         st.session_state.messages = []
+        st.session_state.conversation_id = None
+        st.session_state.conversation_history = []
         st.rerun()
+
+    # 对话管理
+    st.subheader("💬 对话管理")
+    
+    # 显示当前对话信息
+    if st.session_state.conversation_id:
+        st.info(f"🆔 当前对话: {st.session_state.conversation_id[:8]}...")
+        if st.button("🗑️ 删除当前对话", use_container_width=True):
+            if delete_conversation(st.session_state.conversation_id):
+                st.success("✅ 对话已删除")
+                st.session_state.conversation_id = None
+                st.session_state.messages = []
+                st.session_state.conversation_history = []
+                st.rerun()
+            else:
+                st.error("❌ 删除对话失败")
+    else:
+        st.info("💭 当前没有活跃对话")
+    
+    # 对话历史列表
+    if agent_online:
+        with st.expander("📋 历史对话", expanded=False):
+            conversations = get_conversations()
+            if conversations:
+                for conv in conversations[:5]:  # 只显示最近5个对话
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        # 显示对话预览
+                        preview = conv.get("first_message", "无消息")[:50]
+                        if len(preview) == 50:
+                            preview += "..."
+                        st.text(f"💬 {preview}")
+                        st.caption(f"消息数: {conv.get('message_count', 0)}")
+                    with col2:
+                        if st.button("📖", key=f"load_{conv['id']}", help="加载此对话"):
+                            st.session_state.conversation_id = conv['id']
+                            st.session_state.messages = []  # 先清空，实际应该从服务器加载
+                            st.success(f"✅ 已切换到对话 {conv['id'][:8]}...")
+                            st.rerun()
+            else:
+                st.info("📭 暂无历史对话")
 
     # 数据集信息
     st.subheader("📁 数据集信息")
-    st.info("""
+    
+    # 计算相对路径
+    current_file_path = Path(__file__).resolve()
+    frontend_dir = current_file_path.parent  # 1_frontend
+    rna_dir = frontend_dir.parent           # Rna
+    project_root = rna_dir.parent           # RnAgent-Project
+    data_path = project_root / "PBMC3kRNA-seq" / "filtered_gene_bc_matrices" / "hg19"
+    
+    # 相对于当前项目的相对路径
+    relative_path = os.path.relpath(str(data_path), str(project_root))
+    
+    st.info(f"""
     **PBMC3K数据集**
     - 细胞类型: 外周血单核细胞
     - 平台: 10X Genomics
-    - 路径: `/Volumes/T7/哈尔滨工业大学-2025/课题组项目/Agent-项目/PBMC3kRNA-seq/filtered_gene_bc_matrices/hg19/`
+    - 相对路径: `{relative_path}/`
+    - 绝对路径: `{data_path}/`
     """)
 
 # 主要内容区域
@@ -642,11 +745,12 @@ with chat_container:
         welcome_msg = """
         ### 👋 欢迎使用RnAgent！
         
-        我是您的单细胞RNA分析助手。您可以：
+        我是您的单细胞RNA分析助手，现在支持**对话记忆功能**！您可以：
         
         1. **使用侧边栏快速操作**：点击按钮执行预定义的分析步骤
         2. **在下方输入自然语言问题**：我会为您生成相应的分析代码  
         3. **运行代码并查看结果**：生成的图表会自动显示
+        4. **📚 对话记忆**：我会记住您的对话历史，提供更好的上下文理解
         
         **推荐开始方式**：
         - 点击侧边栏的"🚀 完整分析流程"按钮进行端到端分析
@@ -662,6 +766,7 @@ with chat_container:
         **🤖 AI模型状态**：
         - ✅ 已自动检测并配置可用模型：{', '.join(available_model_names)}
         - 🎯 当前选择：已自动为您选择最佳模型
+        - 💭 对话记忆：已启用，我会记住我们的对话历史
         """
         else:
             welcome_msg += """
@@ -688,12 +793,16 @@ if prompt := st.chat_input("请输入您的问题，比如'请分析PBMC3K数据
     # 简单的意图识别和MCP工具调用
     prompt_lower = prompt.lower()
 
+    # 检查是否为直接MCP工具调用的简单问题
+    direct_mcp_call = False
+    
     if "加载" in prompt and ("数据" in prompt or "pbmc" in prompt_lower):
         with st.spinner("正在获取数据加载代码..."):
             result = call_mcp_tool_sync("load_pbmc3k_data", {})
             if isinstance(result, dict) and "content" in result:
                 tool_message = build_tool_message("load_pbmc3k_data", result)
                 st.session_state.messages.append(tool_message)
+                direct_mcp_call = True
 
     elif "质量控制" in prompt or "质控" in prompt:
         with st.spinner("正在获取质量控制分析代码..."):
@@ -702,6 +811,7 @@ if prompt := st.chat_input("请输入您的问题，比如'请分析PBMC3K数据
                 tool_message = build_tool_message(
                     "quality_control_analysis", result)
                 st.session_state.messages.append(tool_message)
+                direct_mcp_call = True
 
     elif "预处理" in prompt:
         with st.spinner("正在获取数据预处理代码..."):
@@ -710,6 +820,7 @@ if prompt := st.chat_input("请输入您的问题，比如'请分析PBMC3K数据
                 tool_message = build_tool_message(
                     "preprocessing_analysis", result)
                 st.session_state.messages.append(tool_message)
+                direct_mcp_call = True
 
     elif "降维" in prompt or "pca" in prompt_lower or "umap" in prompt_lower:
         with st.spinner("正在获取降维分析代码..."):
@@ -719,6 +830,7 @@ if prompt := st.chat_input("请输入您的问题，比如'请分析PBMC3K数据
                 tool_message = build_tool_message(
                     "dimensionality_reduction_analysis", result)
                 st.session_state.messages.append(tool_message)
+                direct_mcp_call = True
 
     elif "聚类" in prompt or "clustering" in prompt_lower:
         with st.spinner("正在获取聚类分析代码..."):
@@ -727,6 +839,7 @@ if prompt := st.chat_input("请输入您的问题，比如'请分析PBMC3K数据
                 tool_message = build_tool_message(
                     "clustering_analysis", result)
                 st.session_state.messages.append(tool_message)
+                direct_mcp_call = True
 
     elif "标记基因" in prompt or "marker" in prompt_lower:
         with st.spinner("正在获取标记基因分析代码..."):
@@ -735,6 +848,7 @@ if prompt := st.chat_input("请输入您的问题，比如'请分析PBMC3K数据
                 tool_message = build_tool_message(
                     "marker_genes_analysis", result)
                 st.session_state.messages.append(tool_message)
+                direct_mcp_call = True
 
     elif "报告" in prompt or "总结" in prompt:
         with st.spinner("正在生成分析报告..."):
@@ -743,16 +857,24 @@ if prompt := st.chat_input("请输入您的问题，比如'请分析PBMC3K数据
                 tool_message = build_tool_message(
                     "generate_analysis_report", result)
                 st.session_state.messages.append(tool_message)
+                direct_mcp_call = True
 
-    else:
-        # 对于其他问题，转交Agent Core处理
+    # 如果不是直接MCP调用，则使用Agent Core处理（支持对话记忆）
+    if not direct_mcp_call:
         if agent_online:
             with st.spinner("Agent Core处理中..."):
-                result = call_agent_core_sync(prompt)
+                result = call_agent_core_sync(prompt, st.session_state.conversation_id)
                 if result.get("success"):
-                    ai_message = AIMessage(
-                        content=result.get("final_response", ""))
+                    # 更新conversation_id
+                    st.session_state.conversation_id = result.get("conversation_id")
+                    
+                    # 添加AI回复
+                    ai_message = AIMessage(content=result.get("final_response", ""))
                     st.session_state.messages.append(ai_message)
+                    
+                    # 记录消息数量
+                    message_count = result.get("message_count", 0)
+                    st.success(f"✅ 回复完成（对话中共 {message_count} 条消息）")
                 else:
                     error_msg = result.get("error", "未知错误")
                     st.session_state.messages.append(
