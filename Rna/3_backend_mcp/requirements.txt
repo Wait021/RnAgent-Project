@@ -1,0 +1,33 @@
+# RNA分析MCP服务器依赖包
+
+# FastMCP服务器框架
+fastmcp>=0.1.0
+
+# 科学计算和数据处理
+numpy>=1.24.0
+pandas>=2.0.0
+matplotlib>=3.7.0
+seaborn>=0.12.0
+scanpy>=1.9.0
+scipy>=1.10.0
+scikit-learn>=1.3.0
+
+# 单细胞分析专用包
+leidenalg>=0.10.0       # Leiden聚类算法
+python-igraph>=0.10.0   # 图算法库（leidenalg依赖）
+umap-learn>=0.5.0       # UMAP降维算法
+louvain>=0.8.0          # Louvain聚类算法（备选）
+
+# 文件处理
+h5py>=3.8.0
+anndata>=0.9.0
+
+# 异步处理
+uvicorn>=0.24.0
+asyncio-compat>=0.1.0
+
+# 数据验证
+pydantic>=2.5.0
+
+# 日志
+logging>=0.4.9.6 

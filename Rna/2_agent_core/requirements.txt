@@ -1,0 +1,23 @@
+# RNA智能体核心依赖包
+
+# LangChain和LangGraph
+langchain>=0.1.0
+langchain-core>=0.1.0
+langchain-openai>=0.1.0
+langgraph>=0.1.0
+
+# MCP客户端
+mcp>=1.0.0
+httpx-sse>=0.4.0
+
+# 数据处理
+pydantic>=2.5.0
+
+# 环境变量
+python-dotenv>=1.0.0
+
+# 异步处理
+asyncio-compat>=0.1.0
+
+# Base64编码
+base64 

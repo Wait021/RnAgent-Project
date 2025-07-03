@@ -1,0 +1,30 @@
+# RnAgent 前端应用依赖
+
+# Streamlit 前端框架
+streamlit>=1.28.0
+
+# LangChain 消息类型
+langchain-core>=0.1.0
+
+# 环境变量管理
+python-dotenv>=1.0.0
+
+# HTTP请求
+requests>=2.31.0
+
+# JSON数据处理
+json5>=0.9.0
+
+# 类型注解
+typing-extensions>=4.0.0
+
+# MCP客户端相关依赖
+mcp>=1.0.0
+httpx-sse>=0.4.0
+
+# 添加新的LangChain依赖
+langchain>=0.1.0
+langchain-openai>=0.1.0
+
+# 添加新的Pydantic依赖
+pydantic>=2.5.0 
