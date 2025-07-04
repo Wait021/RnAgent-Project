@@ -49,7 +49,7 @@ mcp = FastMCP("RNA-Analysis-MCP-Server")
 
 
 class PythonREPL(BaseModel):
-    """模拟独立的Python REPL，参考STAgent_MCP实现"""
+    """模拟独立的Python REPL，类似Jupyter notebook的执行环境"""
 
     globals: Optional[Dict] = Field(default_factory=dict, alias="_globals")
     locals: Optional[Dict] = None
@@ -57,51 +57,76 @@ class PythonREPL(BaseModel):
     @staticmethod
     def sanitize_input(query: str) -> str:
         """清理输入到Python REPL的代码"""
+        # 移除markdown代码块标记
         query = re.sub(r"^(\s|`)*(?i:python)?\s*", "", query)
         query = re.sub(r"(\s|`)*$", "", query)
         return query
 
     def run(self, command: str, timeout: Optional[int] = None) -> str:
-        """运行命令并返回任何打印的内容 - 修复版本，直接在主进程中执行"""
+        """运行命令并返回任何打印的内容 - 支持任意Python代码执行"""
         old_stdout = sys.stdout
+        old_stderr = sys.stderr
         sys.stdout = mystdout = StringIO()
+        sys.stderr = mystderr = StringIO()
 
         try:
             cleaned_command = self.sanitize_input(command)
-            logger.info(
-                f"🔍 [代码清理] 原始长度: {len(command)}, 清理后长度: {len(cleaned_command)}")
+            logger.info(f"🔍 [代码清理] 原始长度: {len(command)}, 清理后长度: {len(cleaned_command)}")
 
             # 确保全局命名空间存在
             if self.globals is None:
                 self.globals = {}
 
-            # 在主进程中直接执行，保持变量持久性
-            exec(cleaned_command, self.globals, self.locals)
+            # 初始化基本模块（如果还没有）
+            if '__builtins__' not in self.globals:
+                self.globals['__builtins__'] = __builtins__
+
+            # 尝试作为表达式执行（用于显示结果）
+            try:
+                # 编译为表达式
+                compiled_expr = compile(cleaned_command, '<string>', 'eval')
+                result = eval(compiled_expr, self.globals, self.locals)
+                
+                # 如果有返回值，打印它
+                if result is not None:
+                    print(repr(result))
+                    
+            except SyntaxError:
+                # 如果不是表达式，作为语句执行
+                exec(cleaned_command, self.globals, self.locals)
 
             sys.stdout = old_stdout
+            sys.stderr = old_stderr
+            
             output = mystdout.getvalue()
+            error_output = mystderr.getvalue()
+            
+            # 合并输出和错误
+            full_output = output
+            if error_output:
+                full_output += "\n" + error_output
 
-            logger.info(f"✅ [代码执行] 执行成功，输出长度: {len(output)}")
+            logger.info(f"✅ [代码执行] 执行成功，输出长度: {len(full_output)}")
             logger.info(f"📊 [全局变量] 当前全局变量数量: {len(self.globals)}")
 
             # 记录重要变量的存在
             important_vars = ['adata', 'sc', 'plt', 'pd', 'np']
-            existing_vars = [
-                var for var in important_vars if var in self.globals]
+            existing_vars = [var for var in important_vars if var in self.globals]
             if existing_vars:
                 logger.info(f"✅ [变量检查] 存在的重要变量: {existing_vars}")
 
-            return output
+            return full_output
 
         except Exception as e:
             sys.stdout = old_stdout
+            sys.stderr = old_stderr
             logger.error(f"❌ [代码执行] 执行失败: {str(e)}")
             logger.error(f"📍 [错误位置] 代码: {cleaned_command[:100]}...")
 
             import traceback
             logger.error(f"📋 [错误详情] {traceback.format_exc()}")
 
-            return f"Error: {repr(e)}"
+            return f"Error: {repr(e)}\n{traceback.format_exc()}"
 
 
 # 创建Python执行器实例，使用全局共享命名空间
@@ -111,7 +136,7 @@ python_repl = PythonREPL(_globals=global_namespace)
 
 @mcp.tool()
 def python_repl_tool(query: str) -> dict:
-    """执行Python代码的工具，参考STAgent_MCP的实现，支持图片生成和返回"""
+    """执行Python代码的工具，类似Jupyter notebook，支持任意Python代码执行"""
     import time
     start_time = time.time()
 
@@ -147,25 +172,33 @@ def python_repl_tool(query: str) -> dict:
     else:
         code_str = str(query)
 
-    # ===== 自动注入前导代码，保证最小依赖 =====
-    prelude_lines: list[str] = []
+    # ===== 环境安全设置：禁用图形弹窗，使用无头后端 =====
+    import matplotlib
+    matplotlib.use('Agg')  # 强制使用无GUI后端，无需GUI环境
+    import matplotlib.pyplot as plt  # noqa: E402 (确保在设置后端后导入)
+    # 覆盖 plt.show，为无操作以防止阻塞或弹窗，同时保留图像对象供后续保存
+    plt.show = lambda *args, **kwargs: None
 
+    # ===== 可选的自动注入前导代码（仅在需要时） =====
+    prelude_lines: list[str] = []
     global_dict = python_repl.globals or {}
 
-    # 如果尚未导入 scanpy / matplotlib，则注入
-    if 'sc' not in global_dict:
+    # 只有当代码涉及到scanpy/单细胞分析时才自动注入
+    needs_scanpy = any(keyword in code_str.lower() for keyword in ['sc.', 'scanpy', 'adata'])
+    
+    if needs_scanpy and 'sc' not in global_dict:
         prelude_lines.append('import scanpy as sc')
         prelude_lines.append('import matplotlib.pyplot as plt')
-        prelude_lines.append(
-            "sc.settings.set_figure_params(dpi=80, show=False)")
+        prelude_lines.append('import pandas as pd')
+        prelude_lines.append('import numpy as np')
+        prelude_lines.append("sc.settings.set_figure_params(dpi=80, dpi_save=150)")
+        prelude_lines.append("sc.settings.verbosity = 2")
 
-    # 如果 adata 尚未加载且即将用到，则尝试预加载（避免后续 NameError）
-    if 'adata' not in global_dict:
-        # 只有当代码片段包含 "adata" 字样才尝试加载，避免无谓的 I/O
-        if 'adata' in code_str:
-            data_path = get_data_path()
-            preload_code = f"data_path = '{data_path}'\nadata = sc.read_10x_mtx(data_path, var_names='gene_symbols', cache=True)\nadata.var_names_make_unique()"
-            prelude_lines.append(preload_code)
+    # 如果 adata 尚未加载且即将用到，则尝试预加载
+    if 'adata' not in global_dict and 'adata' in code_str:
+        data_path = get_data_path()
+        preload_code = f"data_path = '{data_path}'\nadata = sc.read_10x_mtx(data_path, var_names='gene_symbols', cache=True)\nadata.var_names_make_unique()"
+        prelude_lines.append(preload_code)
 
     if prelude_lines:
         code_str = "\n".join(prelude_lines) + "\n" + code_str
@@ -189,8 +222,6 @@ def python_repl_tool(query: str) -> dict:
         if output and output.strip():
             logger.info(f"📤 [执行输出] {output.strip()[:100]}...")
             result_parts.append(output.strip())
-        else:
-            logger.info("📤 [执行输出] 无输出内容")
 
         # 检查生成的图表
         figures = [plt.figure(i) for i in plt.get_fignums()]
@@ -210,9 +241,7 @@ def python_repl_tool(query: str) -> dict:
             logger.info("🖼️ [图片检测] 未发现matplotlib图表")
 
         if not result_parts:
-            result_parts.append(
-                "Executed code successfully with no output. If you want to see the output of a value, you should print it out with `print(...)`."
-            )
+            result_parts.append("Code executed successfully with no output.")
 
     except Exception as e:
         exec_time = time.time() - exec_start if 'exec_start' in locals() else 0
@@ -231,8 +260,7 @@ def python_repl_tool(query: str) -> dict:
     logger.info("="*60)
     logger.info(f"🏁 [MCP完成] python_repl_tool 执行完成")
     logger.info(f"⏱️ [总耗时] {total_time:.2f}s")
-    logger.info(
-        f"📊 [结果统计] 内容长度: {len(result_summary)}, 图片数量: {len(plot_paths)}")
+    logger.info(f"📊 [结果统计] 内容长度: {len(result_summary)}, 图片数量: {len(plot_paths)}")
     logger.info(f"📤 [返回结果] {str(result)[:200]}...")
     logger.info("="*60)
 
