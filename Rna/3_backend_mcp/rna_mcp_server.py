@@ -22,6 +22,10 @@ project_root = os.path.dirname(os.path.dirname(
     os.path.dirname(os.path.abspath(__file__))))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
+
+# 设置工作目录为项目根目录
+os.chdir(project_root)
+
 # ==== 现在导入项目配置模块 ====
 from config import get_config, get_data_path, get_plots_path
 # === 设置项目根路径并导入配置 ===
@@ -197,7 +201,7 @@ def python_repl_tool(query: str) -> dict:
     # 如果 adata 尚未加载且即将用到，则尝试预加载
     if 'adata' not in global_dict and 'adata' in code_str:
         data_path = get_data_path()
-        preload_code = f"data_path = '{data_path}'\nadata = sc.read_10x_mtx(data_path, var_names='gene_symbols', cache=True)\nadata.var_names_make_unique()"
+        preload_code = f"data_path = '{data_path}'\nadata = sc.read_10x_mtx(data_path, var_names='gene_symbols', cache=True)\nadata.var_names_make_unique()\nglobals()['adata'] = adata\npython_repl.globals['adata'] = adata"
         prelude_lines.append(preload_code)
 
     if prelude_lines:
@@ -336,6 +340,27 @@ data_path = "{get_data_path()}"
 
 print(f"正在从以下路径加载数据: {{data_path}}")
 
+# 检查当前工作目录
+import os
+print(f"当前工作目录: {{os.getcwd()}}")
+
+# 检查文件是否存在
+if not os.path.exists(data_path):
+    print(f"❌ 错误: 数据路径不存在: {{data_path}}")
+    print("请检查数据文件是否正确放置")
+    raise FileNotFoundError(f"数据路径不存在: {{data_path}}")
+
+# 检查必要文件
+required_files = ['matrix.mtx', 'barcodes.tsv', 'genes.tsv']
+for file in required_files:
+    file_path = os.path.join(data_path, file)
+    if not os.path.exists(file_path):
+        print(f"❌ 错误: 缺少必要文件: {{file}}")
+        print(f"文件路径: {{file_path}}")
+        raise FileNotFoundError(f"缺少必要文件: {{file}}")
+
+print("✅ 数据文件检查通过")
+
 # 加载10X数据
 adata = sc.read_10x_mtx(
     data_path,
@@ -391,6 +416,14 @@ def quality_control_analysis() -> Dict[str, Any]:
     code = '''
 # 质量控制分析
 print("\\n=== 开始质量控制分析 ===")
+
+# 检查adata是否存在
+if 'adata' not in globals():
+    print("❌ 错误: adata变量未定义，请先运行load_pbmc3k_data")
+    raise NameError("adata变量未定义")
+
+# 确保adata在全局命名空间中可用
+globals()['adata'] = adata
 
 # 计算质量控制指标
 adata.var['mt'] = adata.var_names.str.startswith('MT-')  # 线粒体基因
@@ -482,6 +515,14 @@ def preprocessing_analysis() -> Dict[str, Any]:
 # 数据预处理
 print("\\n=== 开始数据预处理 ===")
 
+# 检查adata是否存在
+if 'adata' not in globals():
+    print("❌ 错误: adata变量未定义，请先运行load_pbmc3k_data")
+    raise NameError("adata变量未定义")
+
+# 确保adata在全局命名空间中可用
+globals()['adata'] = adata
+
 # 过滤细胞和基因
 print("过滤前:")
 print(f"细胞数量: {adata.n_obs}")
@@ -552,6 +593,14 @@ def dimensionality_reduction_analysis() -> Dict[str, Any]:
 # 降维分析
 print("\\n=== 开始降维分析 ===")
 
+# 检查adata是否存在
+if 'adata' not in globals():
+    print("❌ 错误: adata变量未定义，请先运行load_pbmc3k_data")
+    raise NameError("adata变量未定义")
+
+# 确保adata在全局命名空间中可用
+globals()['adata'] = adata
+
 # 标准化数据
 sc.pp.scale(adata, max_value=10)
 
@@ -617,6 +666,14 @@ def clustering_analysis() -> Dict[str, Any]:
     code = '''
 # 聚类分析
 print("\\n=== 开始聚类分析 ===")
+
+# 检查adata是否存在
+if 'adata' not in globals():
+    print("❌ 错误: adata变量未定义，请先运行load_pbmc3k_data")
+    raise NameError("adata变量未定义")
+
+# 确保adata在全局命名空间中可用
+globals()['adata'] = adata
 
 # Leiden聚类
 sc.tl.leiden(adata, resolution=0.5)
@@ -690,6 +747,14 @@ def marker_genes_analysis() -> Dict[str, Any]:
 # 标记基因分析
 print("\\n=== 开始标记基因分析 ===")
 
+# 检查adata是否存在
+if 'adata' not in globals():
+    print("❌ 错误: adata变量未定义，请先运行load_pbmc3k_data")
+    raise NameError("adata变量未定义")
+
+# 确保adata在全局命名空间中可用
+globals()['adata'] = adata
+
 # 简单检查聚类是否已完成
 if 'leiden' not in adata.obs.columns:
     print("⚠️ 未找到聚类结果，请先执行聚类分析")
@@ -754,6 +819,14 @@ def generate_analysis_report() -> Dict[str, Any]:
 # 生成分析报告
 import os
 print("\\n=== 生成PBMC3K数据分析报告 ===")
+
+# 检查adata是否存在
+if 'adata' not in globals():
+    print("❌ 错误: adata变量未定义，请先运行load_pbmc3k_data")
+    raise NameError("adata变量未定义")
+
+# 确保adata在全局命名空间中可用
+globals()['adata'] = adata
 
 print("\\n" + "="*60)
 print("           PBMC3K 单细胞RNA测序数据分析报告")
