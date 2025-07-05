@@ -22,7 +22,7 @@ class ServerConfig:
 @dataclass
 class DataConfig:
     """数据配置"""
-    pbmc3k_path: str = "/Volumes/T7/哈尔滨工业大学-2025/课题组项目/Agent-项目/PBMC3kRNA-seq/filtered_gene_bc_matrices/hg19/"
+    pbmc3k_path: str = "PBMC3kRNA-seq/filtered_gene_bc_matrices/hg19/"
     cache_dir: str = "cache"
     plots_dir: str = "tmp/plots"
     max_cache_size: int = 1024 * 1024 * 1024  # 1GB

@@ -31,7 +31,7 @@ log_error() {
 
 # 配置变量
 PROJECT_NAME="rna_project"
-PROJECT_DIR="/home/$USER/$PROJECT_NAME"
+PROJECT_DIR="./$PROJECT_NAME"
 REPO_URL="https://github.com/Wait021/RnAgent-Project.git"  # RnAgent项目仓库地址
 SERVICE_NAME="rna_agent"
 
@@ -210,7 +210,7 @@ fi
 log_info "创建启动脚本..."
 cat > start_rna_agent.sh << 'EOF'
 #!/bin/bash
-cd /home/$USER/rna_project
+cd ./rna_project
 source venv/bin/activate
 export RNA_ENV=server
 

@@ -61,7 +61,7 @@ class ConfigManager:
         """本地开发环境配置"""
         return EnvironmentConfig(
             name="local",
-            data_path="/Volumes/T7/哈尔滨工业大学-2025/课题组项目/Agent-项目/PBMC3kRNA-seq/filtered_gene_bc_matrices/hg19/",
+            data_path="PBMC3kRNA-seq/filtered_gene_bc_matrices/hg19/",
             host="localhost",
             frontend_port=8501,
             agent_port=8002,
@@ -73,7 +73,7 @@ class ConfigManager:
         """服务器环境配置"""
         # 从环境变量获取用户名，或使用默认值
         username = os.getenv("USER", "ubuntu")
-        base_path = "/workspace/RnAgent-Project"
+        base_path = "."
 
         return EnvironmentConfig(
             name="server",

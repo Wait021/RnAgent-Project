@@ -173,7 +173,7 @@ chmod +x deploy.sh
 
 ```bash
 # 编辑环境配置
-cd /home/$USER/rna_project
+cd ./rna_project
 nano .env
 
 # 填写您的API密钥
@@ -198,8 +198,8 @@ http://your_server_ip:8501
 1. **创建项目目录**
 
 ```bash
-mkdir -p /workspace/rna_project
-cd /workspace/rna_project
+mkdir -p ./rna_project
+cd ./rna_project
 ```
 
 2. **克隆代码**
@@ -271,7 +271,7 @@ git push origin main
 
 # 在服务器上更新
 ssh your_server
-cd /home/$USER/rna_project
+cd ./rna_project
 git pull origin main
 ./stop_rna_agent.sh
 ./start_rna_agent.sh
@@ -283,11 +283,11 @@ git pull origin main
 
 ```bash
 # 在服务器上设置
-cd /home/$USER/rna_project/.git/hooks
+cd ./rna_project/.git/hooks
 cat > post-receive << 'EOF'
 #!/bin/bash
-cd /home/$USER/rna_project
-git --git-dir=/home/$USER/rna_project/.git --work-tree=/home/$USER/rna_project checkout -f
+cd ./rna_project
+git --git-dir=./rna_project/.git --work-tree=./rna_project checkout -f
 ./stop_rna_agent.sh
 ./start_rna_agent.sh
 EOF
@@ -329,7 +329,7 @@ git commit -m "配置Git LFS"
 
 ```bash
 # 单独同步数据
-rsync -avz --progress PBMC3kRNA-seq/ user@server:/home/user/rna_project/PBMC3kRNA-seq/
+rsync -avz --progress PBMC3kRNA-seq/ user@server:./rna_project/PBMC3kRNA-seq/
 ```
 
 ## 🔧 配置管理
